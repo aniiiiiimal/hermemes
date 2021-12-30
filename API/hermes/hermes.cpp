@@ -1343,6 +1343,50 @@ HermesRuntimeImpl::prepareJavaScript(
     throw jsi::JSINativeException(
         "Compiling JS failed: " + std::move(bcErr.second) + os.str());
   }
+
+  // TODO: convert to runtime modification
+  // if (sourceURL == "index.android.bundle") {
+  //   ::hermes::hermesLog("AliuHermes", "modyfing");
+
+  //   auto bc = bcErr.first.get();
+  //   const auto funcionId = 4;
+  //   uint8_t *bytecodeStart = const_cast<uint8_t
+  //   *>(bc->getBytecode(funcionId));
+
+  //   auto ip = bytecodeStart;
+
+  //   *ip = (uint8_t)::hermes::inst::OpCode::GetEnvironment;
+  //   ip += 1;
+  //   *ip = 0;
+  //   ip += 1;
+  //   *ip = 0;
+  //   ip += 1;
+
+  //   *ip = (uint8_t)::hermes::inst::OpCode::LoadFromEnvironment;
+  //   ip += 1;
+  //   *ip = 0;
+  //   ip += 1;
+  //   *ip = 0;
+  //   ip += 1;
+  //   *ip = 0;
+  //   ip += 1;
+
+  //   *ip = (uint8_t)::hermes::inst::OpCode::Ret;
+  //   ip += 1;
+  //   *ip = 0;
+  //   ip += 1;
+
+  //   auto size = ip - bytecodeStart;
+  //   auto header = bc->getFunctionHeader(funcionId);
+
+  //   if (header.isLarge()) {
+  //     const_cast<::hermes::hbc::FunctionHeader *>(header.asLarge())
+  //         ->bytecodeSizeInBytes = size;
+  //   } else {
+  //     const_cast<::hermes::hbc::SmallFuncHeader *>(header.asSmall())
+  //         ->bytecodeSizeInBytes = size;
+  //   }
+
   return std::make_shared<const HermesPreparedJavaScript>(
       std::move(bcErr.first), runtimeFlags, std::move(sourceURL));
 }
@@ -1369,10 +1413,55 @@ jsi::Value HermesRuntimeImpl::evaluatePreparedJavaScript(
   });
 }
 
+char *readFile(const char *path) {
+  FILE *fp = fopen(path, "r");
+  fseek(fp, 0L, SEEK_END);
+  long size = ftell(fp);
+  fseek(fp, 0L, SEEK_SET);
+  char *buffer = (char *)calloc(size, sizeof(char));
+  fread(buffer, sizeof(char), size, fp);
+  fclose(fp);
+
+  return buffer;
+}
+
 jsi::Value HermesRuntimeImpl::evaluateJavaScript(
     const std::shared_ptr<const jsi::Buffer> &buffer,
     const std::string &sourceURL) {
-  return evaluatePreparedJavaScript(prepareJavaScript(buffer, sourceURL));
+  auto isMainBundle = sourceURL == "index.android.bundle";
+
+  if (isMainBundle) {
+    ::hermes::hermesLog("AliuHermes", "Injecting preLoad");
+    evaluateJavaScript(
+        std::make_unique<jsi::StringBuffer>(std::string(
+            "const oldObjectCreate = this.Object.create;"
+            "const _window = this;"
+            "_window.Object.create = (...args) => {"
+            "    const obj = oldObjectCreate.apply(_window.Object, args);"
+            "    if (args[0] === null) {"
+            "        _window.modules = obj;"
+            "        _window.Object.create = oldObjectCreate;"
+            "    }"
+            "    return obj;"
+            "};")),
+        "preLoad");
+  }
+
+  auto returnValue =
+      evaluatePreparedJavaScript(prepareJavaScript(buffer, sourceURL));
+
+  if (isMainBundle) {
+    ::hermes::hermesLog("AliuHermes", "Injecting Aliucord.js");
+
+    auto buffer = readFile("/sdcard/Aliucord-RN/Aliucord.js");
+
+    evaluateJavaScript(
+        std::make_unique<jsi::StringBuffer>(std::string(buffer)), "postLoad");
+
+    free(buffer);
+  }
+
+  return returnValue;
 }
 
 jsi::Object HermesRuntimeImpl::global() {
