@@ -1,0 +1,34 @@
+name: CI
+
+on: [ push, pull_request ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    
+    - name: Setup
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y ninja-build
+
+    - name: Build compiler
+      run: |
+        utils/build/configure.py ./build
+        cmake --build ./build --target hermesc
+
+    - name: Build hermes for android
+      run: |
+        cd android
+        unset ANDROID_NDK_ROOT
+        unset ANDROID_NDK_LATEST_HOME
+        unset ANDROID_NDK_HOME
+        echo yes | sudo ${ANDROID_HOME}/tools/bin/sdkmanager --install "ndk;21.0.6113669" --sdk_root=${ANDROID_SDK_ROOT} > /dev/null
+        HERMES_WS_DIR=.. ./gradlew githubRelease
+
+    - uses: actions/upload-artifact@v2
+      with:
+        name: android
+        path: build_android/distributions/hermes-runtime-android-*.tar.gz
