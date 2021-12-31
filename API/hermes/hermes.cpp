@@ -13,6 +13,10 @@
 #error "LLVM_PTR_SIZE needs to be defined"
 #endif
 
+#ifdef __APPLE__
+#import <CoreFoundation/CoreFoundation.h>
+#endif
+
 #if LLVM_PTR_SIZE != 8
 // Only have JSI be on the stack for builds that are not 64-bit.
 #define HERMESJSI_ON_STACK
@@ -59,6 +63,7 @@
 #include <list>
 #include <mutex>
 #include <system_error>
+#include <sys/stat.h>
 
 #ifdef HERMESJSI_ON_STACK
 #include <future>
@@ -1425,40 +1430,65 @@ char *readFile(const char *path) {
   return buffer;
 }
 
+bool fileExists(const std::string& name) {
+  struct stat buffer;   
+  return (stat (name.c_str(), &buffer) == 0); 
+}
+
 jsi::Value HermesRuntimeImpl::evaluateJavaScript(
     const std::shared_ptr<const jsi::Buffer> &buffer,
     const std::string &sourceURL) {
-  auto isMainBundle = sourceURL == "index.android.bundle";
+
+  auto isMainBundle = sourceURL == "index.android.bundle" || sourceURL.find("main.jsbundle") != std::string::npos;
 
   if (isMainBundle) {
     ::hermes::hermesLog("AliuHermes", "Injecting preLoad");
     evaluateJavaScript(
-        std::make_unique<jsi::StringBuffer>(std::string(
-            "const oldObjectCreate = this.Object.create;"
-            "const _window = this;"
-            "_window.Object.create = (...args) => {"
-            "    const obj = oldObjectCreate.apply(_window.Object, args);"
-            "    if (args[0] === null) {"
-            "        _window.modules = obj;"
-            "        _window.Object.create = oldObjectCreate;"
-            "    }"
-            "    return obj;"
-            "};")),
-        "preLoad");
+      std::make_unique<jsi::StringBuffer>(std::string(
+          "const oldObjectCreate = this.Object.create;"
+          "const _window = this;"
+          "_window.Object.create = (...args) => {"
+          "    const obj = oldObjectCreate.apply(_window.Object, args);"
+          "    if (args[0] === null) {"
+          "        _window.modules = obj;"
+          "        _window.Object.create = oldObjectCreate;"
+          "    }"
+          "    return obj;"
+          "};")),
+      "preLoad");
   }
 
   auto returnValue =
       evaluatePreparedJavaScript(prepareJavaScript(buffer, sourceURL));
 
-  if (isMainBundle) {
-    ::hermes::hermesLog("AliuHermes", "Injecting Aliucord.js");
+  if (isMainBundle) {    
+#ifdef __APPLE__
+    // Get the home directory path
+    std::string homeDir(CFStringGetCStringPtr(CFURLGetString(CFCopyHomeDirectoryURL()), kCFStringEncodingUTF8));
+    std::string dataDir;
 
-    auto buffer = readFile("/sdcard/Aliucord-RN/Aliucord.js");
+    if (homeDir.find("file://") != std::string::npos) {
+      dataDir = std::string(homeDir.substr(7));
+    } else {
+      dataDir = std::string(homeDir);
+    }
 
-    evaluateJavaScript(
-        std::make_unique<jsi::StringBuffer>(std::string(buffer)), "postLoad");
+    dataDir = dataDir + std::string("Documents/");
+#elif
+    std::string dataDir = "/sdcard/"
+#endif
+    std::string jsPath = dataDir + std::string("Aliucord.js");
 
-    free(buffer);
+    if (fileExists(jsPath)) {
+      ::hermes::hermesLog("AliuHermes", "Injecting Aliucord.js");
+      
+      auto buffer = readFile(jsPath.data());
+
+      evaluateJavaScript(
+          std::make_unique<jsi::StringBuffer>(std::string(buffer)), "postLoad");
+
+      free(buffer);
+    }
   }
 
   return returnValue;
