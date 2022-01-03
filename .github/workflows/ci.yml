@@ -16,6 +16,8 @@ jobs:
 
       - name: ccache
         uses: hendrikmuhs/ccache-action@4bcd0c14065d24d92f5e937fae51361c64048b46
+        with:
+          key: android
 
       - name: Build compiler
         run: |
@@ -48,6 +50,8 @@ jobs:
 
       - name: ccache
         uses: hendrikmuhs/ccache-action@4bcd0c14065d24d92f5e937fae51361c64048b46
+        with:
+          key: ios
 
       - name: Build hermes for ios
         run: |
