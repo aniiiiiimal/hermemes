@@ -15,7 +15,7 @@ jobs:
           sudo apt-get install -y ninja-build
 
       - name: ccache
-        uses: hendrikmuhs/ccache-action@v1
+        uses: hendrikmuhs/ccache-action@4bcd0c14065d24d92f5e937fae51361c64048b46
 
       - name: Build compiler
         run: |

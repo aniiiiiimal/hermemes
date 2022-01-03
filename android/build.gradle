@@ -58,6 +58,14 @@ allprojects {
   }
 }
 
+subprojects {
+  afterEvaluate {
+    android.defaultConfig.externalNativeBuild.cmake {
+      arguments "-DCMAKE_C_COMPILER_LAUNCHER=ccache"
+      arguments "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+    }
+  }
+}
 
 buildDir = "${hermes_ws}/build_android"
 
