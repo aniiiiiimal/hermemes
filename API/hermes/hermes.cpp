@@ -1474,7 +1474,7 @@ jsi::Value HermesRuntimeImpl::evaluateJavaScript(
     }
 
     dataDir = dataDir + std::string("Documents/");
-#elif
+#else
     std::string dataDir = "/sdcard/"
 #endif
     std::string jsPath = dataDir + std::string("Aliucord.js");
