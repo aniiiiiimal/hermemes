@@ -39,12 +39,7 @@ function get_mac_deployment_target {
 
 # Utility function to configure an Apple framework
 function configure_apple_framework {
-  local build_cli_tools enable_bitcode
-  if [[ $1 == iphoneos ]]; then
-    enable_bitcode="false"
-  else
-    enable_bitcode="false"
-  fi
+  local build_cli_tools
   if [[ $1 == macosx ]]; then
     build_cli_tools="true"
   else
@@ -58,11 +53,13 @@ function configure_apple_framework {
     -DHERMES_ENABLE_DEBUGGER:BOOLEAN=true \
     -DHERMES_ENABLE_FUZZING:BOOLEAN=false \
     -DHERMES_ENABLE_TEST_SUITE:BOOLEAN=false \
-    -DHERMES_ENABLE_BITCODE:BOOLEAN=$enable_bitcode \
+    -DHERMES_ENABLE_BITCODE:BOOLEAN=false \
     -DHERMES_BUILD_APPLE_FRAMEWORK:BOOLEAN=true \
     -DHERMES_BUILD_APPLE_DSYM:BOOLEAN=true \
     -DHERMES_ENABLE_TOOLS:BOOLEAN=$build_cli_tools \
-    -DCMAKE_INSTALL_PREFIX:PATH=../destroot"
+    -DCMAKE_INSTALL_PREFIX:PATH=../destroot \
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
 
   ./utils/build/configure.py "$BUILD_TYPE" --cmake-flags "$cmake_flags" --build-system="$BUILD_SYSTEM" "build_$1"
 }

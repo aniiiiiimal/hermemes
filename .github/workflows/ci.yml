@@ -3,7 +3,7 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  build:
+  build-android:
     runs-on: ubuntu-latest
 
     steps:
@@ -35,3 +35,25 @@ jobs:
         with:
           name: android
           path: build_android/distributions/hermes-runtime-android-*.tar.gz
+
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup
+        run: |
+          brew install ninja
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@4bcd0c14065d24d92f5e937fae51361c64048b46
+
+      - name: Build hermes for ios
+        run: |
+          ./utils/build-ios-framework.sh
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ios
+          path: build_iphoneos/API/hermes/hermes.framework
