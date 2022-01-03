@@ -210,6 +210,8 @@ def main():
         args.cmake_flags.split()
         + python_executable_flag()
         + ["-DCMAKE_BUILD_TYPE=" + args.build_type]
+        + ["-DCMAKE_C_COMPILER_LAUNCHER=ccache"]
+        + ["-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"]
     )
 
     if (
