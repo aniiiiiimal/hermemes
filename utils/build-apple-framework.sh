@@ -48,7 +48,7 @@ function configure_apple_framework {
   local build_cli_tools enable_bitcode
 
   if [[ $1 == iphoneos || $1 == catalyst ]]; then
-    enable_bitcode="true"
+    enable_bitcode="false"
   else
     enable_bitcode="false"
   fi
