@@ -14,6 +14,10 @@
 #define HERMESJSI_ON_STACK
 #endif
 
+#ifdef __APPLE__
+#import <CoreFoundation/CoreFoundation.h>
+#endif
+
 #include "hermes/BCGen/HBC/BytecodeDataProvider.h"
 #include "hermes/BCGen/HBC/BytecodeFileFormat.h"
 #include "hermes/BCGen/HBC/BytecodeProviderFromSrc.h"
@@ -55,6 +59,9 @@
 #include <mutex>
 #include <system_error>
 #include <unordered_map>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <stdio.h>
 
 #ifdef HERMESJSI_ON_STACK
 #include <future>
@@ -1492,10 +1499,102 @@ jsi::Value HermesRuntimeImpl::evaluatePreparedJavaScript(
   });
 }
 
+char *readFile(const char *path) {
+  FILE *fp = fopen(path, "r");
+  fseek(fp, 0L, SEEK_END);
+  long size = ftell(fp);
+  fseek(fp, 0L, SEEK_SET);
+  char *buffer = (char *)calloc(size, sizeof(char));
+  fread(buffer, sizeof(char), size, fp);
+  fclose(fp);
+
+  return buffer;
+}
+
+bool fileExists(const std::string& name) {
+  struct stat buffer;   
+  return (stat (name.c_str(), &buffer) == 0); 
+}
+
 jsi::Value HermesRuntimeImpl::evaluateJavaScript(
     const std::shared_ptr<const jsi::Buffer> &buffer,
     const std::string &sourceURL) {
-  return evaluateJavaScriptWithSourceMap(buffer, nullptr, sourceURL);
+
+  auto isMainBundle = sourceURL == "index.android.bundle" || sourceURL.find("main.jsbundle") != std::string::npos;
+
+  if (isMainBundle) {
+    ::hermes::hermesLog("AliuHermes", "Injecting preLoad");
+    evaluateJavaScript(
+      std::make_unique<jsi::StringBuffer>(std::string(
+          "const oldObjectCreate = this.Object.create;"
+          "const _window = this;"
+          "_window.Object.create = (...args) => {"
+          "    const obj = oldObjectCreate.apply(_window.Object, args);"
+          "    if (args[0] === null) {"
+          "        _window.modules = obj;"
+          "        _window.Object.create = oldObjectCreate;"
+          "    }"
+          "    return obj;"
+          "};")),
+      "preLoad");
+  }
+
+  auto returnValue = evaluateJavaScriptWithSourceMap(buffer, nullptr, sourceURL);
+
+  if (isMainBundle) {    
+#ifdef __APPLE__
+    // Get the home directory path
+    std::string homeDir(CFStringGetCStringPtr(CFURLGetString(CFCopyHomeDirectoryURL()), kCFStringEncodingUTF8));
+    std::string dataDir;
+
+    if (homeDir.find("file://") != std::string::npos) {
+      dataDir = std::string(homeDir.substr(7));
+    } else {
+      dataDir = std::string(homeDir);
+    }
+
+    dataDir = dataDir + std::string("Documents/");
+#else
+    std::string dataDir = "/sdcard/Aliucord-RN/";
+#endif
+    std::string jsPath = dataDir + std::string("Aliucord.js");
+
+    if (fileExists(jsPath)) {
+      ::hermes::hermesLog("AliuHermes", "Injecting Aliucord.js");
+      
+      auto buffer = readFile(jsPath.data());
+
+      evaluateJavaScript(
+          std::make_unique<jsi::StringBuffer>(std::string(buffer)), "postLoad");
+
+      std::string pluginsDir = dataDir + std::string("Plugins/");
+
+      if (fileExists(pluginsDir)) {
+        DIR *d;
+        struct dirent *dir;
+
+        d = opendir(pluginsDir.data());
+        if (d) {
+          while ((dir = readdir(d)) != NULL) {
+            std::string pluginPath = pluginsDir + std::string(dir->d_name);
+
+            auto buffer = readFile(pluginPath.data());
+
+            evaluateJavaScript(
+              std::make_unique<jsi::StringBuffer>(std::string(buffer)), dir->d_name);
+
+            free(buffer);
+          }
+
+          closedir(d);
+        }
+      }
+
+      free(buffer);
+    }
+  }
+
+  return returnValue;
 }
 
 bool HermesRuntimeImpl::drainMicrotasks(int maxMicrotasksHint) {
