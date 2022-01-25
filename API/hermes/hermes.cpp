@@ -1565,7 +1565,11 @@ jsi::Value HermesRuntimeImpl::evaluateJavaScript(
       auto buffer = readFile(jsPath.data());
 
       evaluateJavaScript(
-          std::make_unique<jsi::StringBuffer>(std::string(buffer)), "postLoad");
+        std::make_unique<jsi::StringBuffer>(
+          std::string("__d(function(...args) {") +
+          std::string(buffer) +
+          std::string("}, 9000, []); __r(9000)")
+        ), "postLoad");
 
       std::string pluginsDir = dataDir + std::string("Plugins/");
 
@@ -1575,14 +1579,20 @@ jsi::Value HermesRuntimeImpl::evaluateJavaScript(
 
         d = opendir(pluginsDir.data());
         if (d) {
+          int pluginID = 9001;
           while ((dir = readdir(d)) != NULL) {
             std::string pluginPath = pluginsDir + std::string(dir->d_name);
 
             auto buffer = readFile(pluginPath.data());
 
             evaluateJavaScript(
-              std::make_unique<jsi::StringBuffer>(std::string(buffer)), dir->d_name);
+              std::make_unique<jsi::StringBuffer>(
+                std::string("__d(function(...args) {") +
+                std::string(buffer) +
+                std::string("}, ") + std::to_string(pluginID) + std::string(", []); __r(") + std::to_string(pluginID) + std::string(")")
+              ), dir->d_name);
 
+            pluginID += 1;
             free(buffer);
           }
 
