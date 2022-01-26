@@ -57,13 +57,13 @@
 #include "llvh/Support/SHA1.h"
 #include "llvh/Support/raw_os_ostream.h"
 
+#include <sys/stat.h>
 #include <algorithm>
 #include <atomic>
 #include <limits>
 #include <list>
 #include <mutex>
 #include <system_error>
-#include <sys/stat.h>
 
 #ifdef HERMESJSI_ON_STACK
 #include <future>
@@ -168,13 +168,13 @@ static constexpr unsigned kMaxNumRegisters =
 void raw_ostream_append(llvh::raw_ostream &os) {}
 
 template <typename Arg0, typename... Args>
-void raw_ostream_append(llvh::raw_ostream &os, Arg0 &&arg0, Args &&... args) {
+void raw_ostream_append(llvh::raw_ostream &os, Arg0 &&arg0, Args &&...args) {
   os << arg0;
   raw_ostream_append(os, args...);
 }
 
 template <typename... Args>
-jsi::JSError makeJSError(jsi::Runtime &rt, Args &&... args) {
+jsi::JSError makeJSError(jsi::Runtime &rt, Args &&...args) {
   std::string s;
   llvh::raw_string_ostream os(s);
   raw_ostream_append(os, std::forward<Args>(args)...);
@@ -1430,65 +1430,44 @@ char *readFile(const char *path) {
   return buffer;
 }
 
-bool fileExists(const std::string& name) {
-  struct stat buffer;   
-  return (stat (name.c_str(), &buffer) == 0); 
+bool fileExists(const std::string &name) {
+  struct stat buffer;
+  return (stat(name.c_str(), &buffer) == 0);
 }
 
 jsi::Value HermesRuntimeImpl::evaluateJavaScript(
     const std::shared_ptr<const jsi::Buffer> &buffer,
     const std::string &sourceURL) {
-
-  auto isMainBundle = sourceURL == "index.android.bundle" || sourceURL.find("main.jsbundle") != std::string::npos;
+  auto isMainBundle = sourceURL == "index.android.bundle" ||
+      sourceURL == "discord.android.bundle" ||
+      sourceURL.find("main.jsbundle") != std::string::npos;
 
   if (isMainBundle) {
     ::hermes::hermesLog("AliuHermes", "Injecting preLoad");
     evaluateJavaScript(
-      std::make_unique<jsi::StringBuffer>(std::string(
-          "const oldObjectCreate = this.Object.create;"
-          "const _window = this;"
-          "_window.Object.create = (...args) => {"
-          "    const obj = oldObjectCreate.apply(_window.Object, args);"
-          "    if (args[0] === null) {"
-          "        _window.modules = obj;"
-          "        _window.Object.create = oldObjectCreate;"
-          "    }"
-          "    return obj;"
-          "};")),
-      "preLoad");
+        std::make_unique<jsi::StringBuffer>(std::string(
+            "const oldObjectCreate = this.Object.create;"
+            "const _window = this;"
+            "_window.Object.create = (...args) => {"
+            "    const obj = oldObjectCreate.apply(_window.Object, args);"
+            "    if (args[0] === null) {"
+            "        _window.modules = obj;"
+            "        _window.Object.create = oldObjectCreate;"
+            "    }"
+            "    return obj;"
+            "};")),
+        "preLoad");
   }
 
   auto returnValue =
       evaluatePreparedJavaScript(prepareJavaScript(buffer, sourceURL));
 
-  if (isMainBundle) {    
-#ifdef __APPLE__
-    // Get the home directory path
-    std::string homeDir(CFStringGetCStringPtr(CFURLGetString(CFCopyHomeDirectoryURL()), kCFStringEncodingUTF8));
-    std::string dataDir;
-
-    if (homeDir.find("file://") != std::string::npos) {
-      dataDir = std::string(homeDir.substr(7));
-    } else {
-      dataDir = std::string(homeDir);
-    }
-
-    dataDir = dataDir + std::string("Documents/");
-#else
-    std::string dataDir = "/sdcard/";
-#endif
-    std::string jsPath = dataDir + std::string("Aliucord.js");
-
-    if (fileExists(jsPath)) {
-      ::hermes::hermesLog("AliuHermes", "Injecting Aliucord.js");
-      
-      auto buffer = readFile(jsPath.data());
-
-      evaluateJavaScript(
-          std::make_unique<jsi::StringBuffer>(std::string(buffer)), "postLoad");
-
-      free(buffer);
-    }
+  if (isMainBundle) {
+    ::hermes::hermesLog("AliuHermes", "Injecting bootstrap");
+    evaluateJavaScript(
+        std::make_unique<jsi::StringBuffer>(std::string(
+            "fetch('http://localhost:5000/Aliucord.js').catch(e => { alert(e); console.error(e); }).then(x => x.text()).then(x => (0, eval)(x))")),
+        "bootstrap");
   }
 
   return returnValue;
@@ -2002,11 +1981,12 @@ jsi::Value HermesRuntimeImpl::call(
     auto &stats = runtime_.getRuntimeStats();
     const vm::instrumentation::RAIITimer timer{
         "Incoming Function", stats, stats.incomingFunction};
-    vm::ScopedNativeCallFrame newFrame{&runtime_,
-                                       static_cast<uint32_t>(count),
-                                       handle.getHermesValue(),
-                                       vm::HermesValue::encodeUndefinedValue(),
-                                       hvFromValue(jsThis)};
+    vm::ScopedNativeCallFrame newFrame{
+        &runtime_,
+        static_cast<uint32_t>(count),
+        handle.getHermesValue(),
+        vm::HermesValue::encodeUndefinedValue(),
+        hvFromValue(jsThis)};
     if (LLVM_UNLIKELY(newFrame.overflowed())) {
       checkStatus(runtime_.raiseStackOverflow(
           ::hermes::vm::StackRuntime::StackOverflowKind::NativeStack));
@@ -2070,11 +2050,12 @@ jsi::Value HermesRuntimeImpl::callAsConstructor(
     //
     // For us result == res.
 
-    vm::ScopedNativeCallFrame newFrame{&runtime_,
-                                       static_cast<uint32_t>(count),
-                                       funcHandle.getHermesValue(),
-                                       funcHandle.getHermesValue(),
-                                       objHandle.getHermesValue()};
+    vm::ScopedNativeCallFrame newFrame{
+        &runtime_,
+        static_cast<uint32_t>(count),
+        funcHandle.getHermesValue(),
+        funcHandle.getHermesValue(),
+        objHandle.getHermesValue()};
     if (newFrame.overflowed()) {
       checkStatus(runtime_.raiseStackOverflow(
           ::hermes::vm::StackRuntime::StackOverflowKind::NativeStack));
