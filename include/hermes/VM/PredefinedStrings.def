@@ -439,6 +439,7 @@ STR(fileName, "fileName")
 STR(setPromiseRejectionTrackingHook, "setPromiseRejectionTrackingHook")
 STR(enablePromiseRejectionTracker, "enablePromiseRejectionTracker")
 STR(spawnAsync, "spawnAsync") /* NOLINT */
+STR(aliuEval, "aliuEval")
 
 STR(require, "require")
 STR(requireFast, "requireFast")

@@ -7,9 +7,13 @@
 
 #include "JSLibInternal.h"
 
+#include "hermes/BCGen/HBC/HBC.h"
 #include "hermes/BCGen/HBC/BytecodeFileFormat.h"
+#include "hermes/SourceMap/SourceMapParser.h"
 #include "hermes/Support/Base64vlq.h"
+#include "hermes/Support/MemoryBuffer.h"
 #include "hermes/Support/OSCompat.h"
+#include "hermes/Support/SimpleDiagHandler.h"
 #include "hermes/VM/Callable.h"
 #include "hermes/VM/JSArray.h"
 #include "hermes/VM/JSArrayBuffer.h"
@@ -817,6 +821,87 @@ CallResult<HermesValue> hermesInternalEnablePromiseRejectionTracker(
       .toCallResultHermesValue();
 }
 
+// AliuHermes - HermesInternal.aliuEval(code: string, sourceMap?: string)
+CallResult<HermesValue> hermesInternalAliuEval(
+    void *,
+    Runtime *runtime,
+    NativeArgs args) {
+  if (!args.getArg(0).isString()) {
+    return args.getArg(0);
+  }
+
+  auto str = args.dyncastArg<StringPrimitive>(0);
+  std::string code;
+  auto view = StringPrimitive::createStringView(runtime, str);
+  if (view.isASCII()) {
+    code = std::string(view.begin(), view.end());
+  } else {
+    SmallU16String<4> allocator;
+    convertUTF16ToUTF8WithReplacements(code, view.getUTF16Ref(allocator));
+  }
+
+  std::unique_ptr<::hermes::SourceMap> sourceMap{};
+  if (args.getArgCount() > 1 && args.getArg(1).isString()) {
+    auto sourceMapStr = args.dyncastArg<StringPrimitive>(1);
+    std::string sourceMapString;
+    auto sourceMapView = StringPrimitive::createStringView(runtime, sourceMapStr);
+    if (sourceMapView.isASCII()) {
+      sourceMapString = std::string(sourceMapView.begin(), sourceMapView.end());
+    } else {
+      SmallU16String<4> allocator;
+      convertUTF16ToUTF8WithReplacements(sourceMapString, sourceMapView.getUTF16Ref(allocator));
+    }
+
+    llvh::MemoryBufferRef mbref(
+        llvh::StringRef(
+            sourceMapString.data(), sourceMapString.size()),
+        "");
+    ::hermes::SimpleDiagHandler diag;
+    ::hermes::SourceErrorManager sm;
+    diag.installInto(sm);
+    sourceMap = ::hermes::SourceMapParser::parse(mbref, sm);
+    if (!sourceMap) {
+      auto errorStr = diag.getErrorString();
+      return runtime->raiseSyntaxError(TwineChar16(errorStr));
+    }
+  }
+
+  hbc::CompileFlags compileFlags;
+  compileFlags.includeLibHermes = false;
+  compileFlags.optimize = runtime->optimizedEval;
+  compileFlags.verifyIR = runtime->verifyEvalIR;
+  compileFlags.lazy =
+      code.size() >= compileFlags.preemptiveFileCompilationThreshold;
+  
+  ScopeChain scopeChain{};
+  std::unique_ptr<hbc::BCProviderFromSrc> bytecode;
+  {
+    std::unique_ptr<hermes::Buffer> buffer;
+    if (compileFlags.lazy) {
+      buffer.reset(new hermes::OwnedMemoryBuffer(
+          llvh::MemoryBuffer::getMemBufferCopy(code)));
+    } else {
+      buffer.reset(new hermes::OwnedMemoryBuffer(
+          llvh::MemoryBuffer::getMemBuffer(code)));
+    }
+
+    auto bytecode_err = hbc::BCProviderFromSrc::createBCProviderFromSrc(
+        std::move(buffer), "aliuEval", std::move(sourceMap), compileFlags, scopeChain);
+    if (!bytecode_err.first) {
+      return runtime->raiseSyntaxError(TwineChar16(bytecode_err.second));
+    }
+    bytecode = std::move(bytecode_err.first);
+  }
+
+  llvh::StringRef sourceURL{};
+  return runtime->runBytecode(
+      std::move(bytecode),
+      RuntimeModuleFlags{},
+      sourceURL,
+      Runtime::makeNullHandle<Environment>(),
+      runtime->getGlobal());
+}
+
 Handle<JSObject> createHermesInternalObject(
     Runtime *runtime,
     const JSLibFlags &flags) {
@@ -912,6 +997,8 @@ Handle<JSObject> createHermesInternalObject(
   defineInternMethod(P::ttiReached, hermesInternalTTIReached);
   defineInternMethod(P::ttrcReached, hermesInternalTTRCReached);
   defineInternMethod(P::getFunctionLocation, hermesInternalGetFunctionLocation);
+
+  defineInternMethod(P::aliuEval, hermesInternalAliuEval);
 
   // HermesInternal function that are only meant to be used for testing purpose.
   // They can change language semantics and are security risks.

@@ -1409,7 +1409,47 @@ jsi::Value HermesRuntimeImpl::evaluatePreparedJavaScript(
 jsi::Value HermesRuntimeImpl::evaluateJavaScript(
     const std::shared_ptr<const jsi::Buffer> &buffer,
     const std::string &sourceURL) {
-  return evaluateJavaScriptWithSourceMap(buffer, nullptr, sourceURL);
+  auto isMainBundle = sourceURL == "index.android.bundle" ||
+      sourceURL == "discord.android.bundle" ||
+      sourceURL.find("main.jsbundle") != std::string::npos;
+
+  if (isMainBundle) {
+    ::hermes::hermesLog("AliuHermes", "Injecting modulesPatch");
+    evaluateJavaScript(
+        std::make_unique<jsi::StringBuffer>(std::string(
+            "const oldObjectCreate = this.Object.create;"
+            "const _window = this;"
+            "_window.Object.create = (...args) => {"
+            "    const obj = oldObjectCreate.apply(_window.Object, args);"
+            "    if (args[0] === null) {"
+            "        _window.modules = obj;"
+            "        _window.Object.create = oldObjectCreate;"
+            "    }"
+            "    return obj;"
+            "};"
+        )),
+        "modulesPatch"
+    );
+  }
+
+  auto returnValue =
+      evaluatePreparedJavaScript(prepareJavaScript(buffer, sourceURL));
+
+  if (isMainBundle) {
+    ::hermes::hermesLog("AliuHermes", "Injecting bootstrap");
+    evaluateJavaScript(
+        std::make_unique<jsi::StringBuffer>(std::string(
+            "fetch('http://localhost:3000/Aliucord.js').catch(console.error).then(x => x.text()).then(code => {"
+            "    fetch('http://localhost:3000/Aliucord.js.map')"
+            "        .catch(e => { console.error(e); (0, eval)(code) })"
+            "        .then(x => x.text()).then(sourceMap => (0, HermesInternal.aliuEval)(code, sourceMap))"
+            "})"
+        )),
+        "bootstrap"
+    );
+  }
+
+  return returnValue;
 }
 
 bool HermesRuntimeImpl::drainMicrotasks(int maxMicrotasksHint) {
