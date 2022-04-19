@@ -11,7 +11,6 @@
 //===----------------------------------------------------------------------===//
 #include "JSLibInternal.h"
 
-#include "hermes/BCGen/HBC/BytecodeDisassembler.h"
 #include "hermes/Regex/Executor.h"
 #include "hermes/VM/ArrayLike.h"
 #include "hermes/VM/Callable.h"
@@ -191,28 +190,9 @@ functionPrototypeToString(void *, Runtime *runtime, NativeArgs args) {
       strBuf.append(buf);
     }
 
-    strBuf.append(") {\n");
-
-    if (auto jsFunc = dyn_vmcast<JSFunction>(*func)) {
-      auto funcId = jsFunc->getCodeBlock()->getFunctionID();
-
-      hbc::BytecodeDisassembler disassembler(jsFunc->getRuntimeModule()->getBytecodeSharedPtr());
-      hbc::DisassemblyOptions options = hbc::DisassemblyOptions::IncludeSource |
-        hbc::DisassemblyOptions::IncludeFunctionIds | hbc::DisassemblyOptions::Pretty;
-      disassembler.setOptions(options);
-
-      std::string str;
-      llvh::raw_string_ostream output(str);
-      disassembler.disassembleFunction(funcId, output);
-
-      strBuf.append(output.str());
-    } else {
-      // Avoid using the [native code] string to prevent extra wrapping overhead
-      // in, e.g., Babel's class extension mechanism.
-      strBuf.append("    [bytecode]\n");
-    }
-
-    strBuf.append("}");
+    // Avoid using the [native code] string to prevent extra wrapping overhead
+    // in, e.g., Babel's class extension mechanism.
+    strBuf.append(") { [bytecode] }");
   }
 
   // Finally allocate a StringPrimitive.

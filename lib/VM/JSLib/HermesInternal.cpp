@@ -8,6 +8,7 @@
 #include "JSLibInternal.h"
 
 #include "hermes/BCGen/HBC/HBC.h"
+#include "hermes/BCGen/HBC/BytecodeDisassembler.h"
 #include "hermes/BCGen/HBC/BytecodeFileFormat.h"
 #include "hermes/SourceMap/SourceMapParser.h"
 #include "hermes/Support/Base64vlq.h"
@@ -902,6 +903,110 @@ CallResult<HermesValue> hermesInternalAliuEval(
       runtime->getGlobal());
 }
 
+// AliuHermes - HermesInternal.getBytecode(function)
+CallResult<HermesValue> hermesInternalGetBytecode(
+    void *,
+    Runtime *runtime,
+    NativeArgs args) {
+  auto func = args.dyncastArg<Callable>(0);
+  if (!func) {
+    return runtime->raiseTypeError(
+        "Can't call HermesInternal.getBytecode() on non-callable");
+  }
+
+  /// Append the current function name to the \p strBuf.
+  auto appendFunctionName = [&func, &runtime](SmallU16String<64> &strBuf) {
+    // Extract the name.
+    auto propRes = JSObject::getNamed_RJS(
+        func, runtime, Predefined::getSymbolID(Predefined::name));
+    if (LLVM_UNLIKELY(propRes == ExecutionStatus::EXCEPTION)) {
+      return ExecutionStatus::EXCEPTION;
+    }
+
+    // Convert the name to string, unless it is undefined.
+    if (!(*propRes)->isUndefined()) {
+      auto strRes =
+          toString_RJS(runtime, runtime->makeHandle(std::move(*propRes)));
+      if (LLVM_UNLIKELY(strRes == ExecutionStatus::EXCEPTION)) {
+        return ExecutionStatus::EXCEPTION;
+      }
+      strRes->get()->appendUTF16String(strBuf);
+    }
+    return ExecutionStatus::RETURNED;
+  };
+
+  SmallU16String<64> strBuf{};
+  if (vmisa<JSAsyncFunction>(*func)) {
+    strBuf.append("async function ");
+  } else if (vmisa<JSGeneratorFunction>(*func)) {
+    strBuf.append("function *");
+  } else {
+    strBuf.append("function ");
+  }
+
+  if (LLVM_UNLIKELY(appendFunctionName(strBuf) == ExecutionStatus::EXCEPTION)) {
+    return ExecutionStatus::EXCEPTION;
+  }
+
+  // Formal parameters and the rest of the body.
+  if (vmisa<NativeFunction>(*func)) {
+    // Use [native code] here because we want to work with tools like Babel
+    // which detect the string "[native code]" and use it to alter behavior
+    // during the class transform.
+    // Also print without synthesized formal parameters to avoid breaking
+    // heuristics that detect the string "() { [native code] }".
+    // \see https://github.com/facebook/hermes/issues/471
+    strBuf.append("() { [native code] }");
+  } else {
+    // Append the synthesized formal parameters.
+    strBuf.append('(');
+
+    // Extract ".length".
+    auto lengthProp = Callable::extractOwnLengthProperty_RJS(func, runtime);
+    if (lengthProp == ExecutionStatus::EXCEPTION)
+      return ExecutionStatus::EXCEPTION;
+
+    // The value of the property is not guaranteed to be meaningful, so clamp it
+    // to [0..65535] for sanity.
+    uint32_t paramCount =
+        (uint32_t)std::min(65535.0, std::max(0.0, *lengthProp));
+
+    for (uint32_t i = 0; i < paramCount; ++i) {
+      if (i != 0)
+        strBuf.append(", ");
+      char buf[16];
+      ::snprintf(buf, sizeof(buf), "a%u", i);
+      strBuf.append(buf);
+    }
+
+    strBuf.append(") {\n");
+
+    if (auto jsFunc = dyn_vmcast<JSFunction>(*func)) {
+      auto funcId = jsFunc->getCodeBlock()->getFunctionID();
+
+      hbc::BytecodeDisassembler disassembler(jsFunc->getRuntimeModule()->getBytecodeSharedPtr());
+      hbc::DisassemblyOptions options = hbc::DisassemblyOptions::IncludeSource |
+          hbc::DisassemblyOptions::IncludeFunctionIds | hbc::DisassemblyOptions::Pretty;
+      disassembler.setOptions(options);
+
+      std::string str;
+      llvh::raw_string_ostream output(str);
+      disassembler.disassembleFunction(funcId, output);
+
+      strBuf.append(output.str());
+    } else {
+      // Avoid using the [native code] string to prevent extra wrapping overhead
+      // in, e.g., Babel's class extension mechanism.
+      strBuf.append("    [bytecode]\n");
+    }
+
+    strBuf.append("}");
+  }
+
+  // Finally allocate a StringPrimitive.
+  return StringPrimitive::create(runtime, strBuf);
+}
+
 Handle<JSObject> createHermesInternalObject(
     Runtime *runtime,
     const JSLibFlags &flags) {
@@ -999,6 +1104,7 @@ Handle<JSObject> createHermesInternalObject(
   defineInternMethod(P::getFunctionLocation, hermesInternalGetFunctionLocation);
 
   defineInternMethod(P::aliuEval, hermesInternalAliuEval);
+  defineInternMethod(P::getBytecode, hermesInternalGetBytecode);
 
   // HermesInternal function that are only meant to be used for testing purpose.
   // They can change language semantics and are security risks.
