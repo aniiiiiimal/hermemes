@@ -2,11 +2,11 @@
 name: CI
 
 on:
-  - push:
+  push:
       branches:
         - 0.11.0-aliucord
 
-  - pull_request
+  pull_request:
 
 jobs:
   build-android:
