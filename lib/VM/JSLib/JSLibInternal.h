@@ -276,6 +276,14 @@ Handle<JSObject> createHermesInternalObject(
     Runtime *runtime,
     const JSLibFlags &jsLibFlags);
 
+Handle<JSObject> createAliuHermesObject(
+    Runtime *runtime,
+    const JSLibFlags &jsLibFlags);
+
+Handle<JSObject> createAliuFSObject(
+    Runtime *runtime,
+    const JSLibFlags &jsLibFlags);
+
 #ifdef HERMES_ENABLE_DEBUGGER
 
 /// Create and initialize the global %DebuggerInternal object, populating its

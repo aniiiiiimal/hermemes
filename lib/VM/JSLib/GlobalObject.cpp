@@ -681,6 +681,22 @@ void initGlobalObject(Runtime *runtime, const JSLibFlags &jsLibFlags) {
       constantDPF,
       createHermesInternalObject(runtime, jsLibFlags)));
 
+  // AliuHermes - Define the global AliuHermes object.
+  runtime->ignoreAllocationFailure(JSObject::defineOwnProperty(
+      runtime->getGlobal(),
+      runtime,
+      Predefined::getSymbolID(Predefined::AliuHermes),
+      constantDPF,
+      createAliuHermesObject(runtime, jsLibFlags)));
+
+  // AliuHermes - Define the global AliuFS object.
+  runtime->ignoreAllocationFailure(JSObject::defineOwnProperty(
+      runtime->getGlobal(),
+      runtime,
+      Predefined::getSymbolID(Predefined::AliuFS),
+      constantDPF,
+      createAliuFSObject(runtime, jsLibFlags)));
+
 #ifdef HERMES_ENABLE_DEBUGGER
 
   // Define the global %DebuggerInternal object.

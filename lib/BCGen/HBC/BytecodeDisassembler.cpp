@@ -30,17 +30,6 @@ namespace hbc {
 
 using param_t = int64_t;
 
-/// Check if the zero based \p operandIndex in instruction \p opCode is a
-/// string table ID.
-static bool isOperandStringID(OpCode opCode, unsigned operandIndex) {
-#define OPERAND_STRING_ID(name, operandNumber)                     \
-  if (opCode == OpCode::name && operandIndex == operandNumber - 1) \
-    return true;
-#include "hermes/BCGen/HBC/BytecodeList.def"
-
-  return false;
-}
-
 std::pair<int, SLG::TagType> checkBufferTag(const unsigned char *buff) {
   auto keyTag = buff[0];
   if (keyTag & 0x80) {

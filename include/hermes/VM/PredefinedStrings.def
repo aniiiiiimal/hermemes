@@ -440,8 +440,20 @@ STR(setPromiseRejectionTrackingHook, "setPromiseRejectionTrackingHook")
 STR(enablePromiseRejectionTracker, "enablePromiseRejectionTracker")
 STR(spawnAsync, "spawnAsync") /* NOLINT */
 
-STR(aliuEval, "aliuEval")
+STR(AliuHermes, "AliuHermes")
 STR(getBytecode, "getBytecode")
+STR(run, "run")
+STR(findStrings, "findStrings")
+
+STR(AliuFS, "AliuFS")
+STR(mkdir, "mkdir")
+STR(readdir, "readdir")
+STR(type, "type")
+STR(directory, "directory")
+STR(file, "file")
+STR(exists, "exists")
+STR(writeFile, "writeFile")
+STR(readFile, "readFile")
 
 STR(require, "require")
 STR(requireFast, "requireFast")

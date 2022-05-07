@@ -1414,7 +1414,7 @@ jsi::Value HermesRuntimeImpl::evaluateJavaScript(
       sourceURL.find("main.jsbundle") != std::string::npos;
 
   if (isMainBundle) {
-    ::hermes::hermesLog("AliuHermes", "Injecting modulesPatch");
+    ::hermes::hermesLog("AliuHermes", "Injecting preload");
     evaluateJavaScript(
         std::make_unique<jsi::StringBuffer>(std::string(
             "const oldObjectCreate = this.Object.create;"
@@ -1427,8 +1427,15 @@ jsi::Value HermesRuntimeImpl::evaluateJavaScript(
             "    }"
             "    return obj;"
             "};"
+            "_window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {"
+            "  injected: [],"
+            "  supportsFiber: true,"
+            "  inject: function inject(injected) {"
+            "    this.injected.push(injected); return this.injected.length - 1;"
+            "  }"
+            "};"
         )),
-        "modulesPatch"
+        "preload"
     );
   }
 
@@ -1438,13 +1445,8 @@ jsi::Value HermesRuntimeImpl::evaluateJavaScript(
   if (isMainBundle) {
     ::hermes::hermesLog("AliuHermes", "Injecting bootstrap");
     evaluateJavaScript(
-        std::make_unique<jsi::StringBuffer>(std::string(
-            "fetch('http://localhost:3000/Aliucord.js').catch(console.error).then(x => x.text()).then(code => {"
-            "    fetch('http://localhost:3000/Aliucord.js.map')"
-            "        .catch(e => { console.error(e); (0, eval)(code) })"
-            "        .then(x => x.text()).then(sourceMap => (0, HermesInternal.aliuEval)(code, sourceMap))"
-            "})"
-        )),
+        // TODO move bootstrap to this repo and call it with cmake?
+        std::make_unique<jsi::StringBuffer>(std::string("(()=>{function asyncGeneratorStep(gen,resolve,reject,_next,_throw,key,arg){try{var info=gen[key](arg);var value=info.value;}catch(error){reject(error);return}if(info.done){resolve(value);}else {Promise.resolve(value).then(_next,_throw);}}function _asyncToGenerator(fn){return function(){var self=this,args=arguments;return new Promise(function(resolve,reject){var gen=fn.apply(self,args);function _next(value){asyncGeneratorStep(gen,resolve,reject,_next,_throw,'next',value);}function _throw(err){asyncGeneratorStep(gen,resolve,reject,_next,_throw,'throw',err);}_next(undefined);})}}_asyncToGenerator(function*(){try{var _AliucordNative=nativeModuleProxy.AliucordNative,externalStorageDirectory=_AliucordNative.externalStorageDirectory,download=_AliucordNative.download;var bundlePath=externalStorageDirectory+'/AliucordRN/Aliucord.js.bundle';if(!AliuFS.exists(bundlePath)){try{yield download('https://raw.githubusercontent.com/Aliucord/AliucordRN/builds/Aliucord.js.bundle',bundlePath);}catch(error){alert('Failed to download Aliucord.js.bundle');throw error}}(window._globals\?\?={}).aliucord=AliuHermes.run(bundlePath);}catch(error){alert('Something went wrong :(\\nCheck logs');console.error(error.stack);}})();})();")),
         "bootstrap"
     );
   }
